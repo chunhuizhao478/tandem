@@ -10,9 +10,12 @@
 #include "util/LinearAllocator.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <functional>
+#include <iostream>
+#include <mpi.h>
 #include <optional>
 
 namespace tndm {
@@ -185,6 +188,38 @@ double RateAndState<Law>::rhs(double time, std::size_t faultNo,
 
         double V = norm(Vi);
         VMax = std::max(VMax, V);
+
+        // v58 tip diagnostic: compare with MFEM [TIP-MON]
+        // Tandem coords: x=strike(km), z=-depth(km). Tip at |x|>48km, -z<2.5km.
+        // Prints raw friction inputs: sn (normal traction from adapter),
+        // tau (tangential traction), psi, V. Compare MFEM sn_el with sn here.
+        // Throttle: log once per ~0.01 yr window to avoid RK-stage flooding.
+        {
+            double xs = x[0], zd = -x[2];
+            if (std::abs(xs) > 48.0 && zd < 2.5) {
+                double t_yr = time / 3.15576e7;
+                static double last_log_yr = -1.0;
+                double interval = (t_yr < 0.01) ? 1e-7 :
+                                  (t_yr < 0.40) ? 0.01 :
+                                  (t_yr < 0.50) ? 0.002 : 0.0005;
+                if (t_yr - last_log_yr >= interval) {
+                    last_log_yr = t_yr;
+                    int rank = 0;
+                    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+                    std::cerr << std::scientific << std::setprecision(8)
+                        << "[TND-TIP] t=" << t_yr
+                        << " r=" << rank
+                        << " fn=" << faultNo << " n=" << node
+                        << " x=" << xs << " z=" << zd
+                        << " sn=" << sn
+                        << " psi=" << psi
+                        << " |V|=" << V
+                        << " tau=(" << tau[0] << "," << tau[1] << ")"
+                        << "\n";
+                }
+            }
+        }
+
         for (std::size_t t = 0; t < TangentialComponents; ++t) {
             r_mat(node, t) = Vi[t];
         }
