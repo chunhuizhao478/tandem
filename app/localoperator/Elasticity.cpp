@@ -17,6 +17,9 @@
 
 #include <Eigen/LU>
 #include <cassert>
+#include <cstdlib>
+#include <iostream>
+#include <mpi.h>
 
 namespace tensor = tndm::elasticity::tensor;
 namespace init = tndm::elasticity::init;
@@ -984,6 +987,54 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
     krnl.u(0) = u0.data();
     krnl.u(1) = u1.data();
     krnl.execute();
+
+    // v58: one-shot dump of traction_q and penalty at tip faces.
+    // Opt-in: set TANDEM_DIAG_TIP_UY=1 to enable.
+    {
+        static int tq_enabled = -1;
+        if (tq_enabled < 0) {
+            const char* env = std::getenv("TANDEM_DIAG_TIP_UY");
+            tq_enabled = (env && std::string(env) == "1") ? 1 : 0;
+        }
+        static bool tq_done = false;
+        if (tq_enabled && !tq_done) {
+            int nq = result.shape(1);
+            double Ty0 = result.data()[1 * nq + 0];
+            if (std::abs(Ty0) > 1e-20) {
+                // Non-zero traction — check face centroid via element midpoint
+                // Use pre-computed area/volume to identify the face, and
+                // penalty magnitude as proxy for tip proximity (tip faces
+                // have smaller elements → larger area/volume → larger penalty).
+                // For direct position filter, use the UnitNormal to confirm
+                // this is a fault face and penalty > 1.5e9 for tip faces.
+                double pen = penalty_[fctNo];
+                auto* n_data = fct[fctNo].get<UnitNormal>().data()->data();
+                double ny = n_data[1];
+                // Fault face (|ny|≈1) AND tip face (high penalty, >1.5 in
+                // Tandem units where penalty is in GPa-scale for km-mesh)
+                if (std::abs(std::abs(ny) - 1.0) < 0.1 && pen > 1.5) {
+                    tq_done = true;  // done after first matching tip face
+                    int rank = 0;
+                    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+                    double vol0 = volume_[info.up[0]];
+                    double vol1 = volume_[info.up[1]];
+                    double area = area_[fctNo];
+                    for (int q = 0; q < nq; q++) {
+                        std::cerr << std::scientific << std::setprecision(10)
+                            << "[TND-TQ] r=" << rank
+                            << " fct=" << fctNo
+                            << " q=" << q
+                            << " Ty=" << result.data()[1 * nq + q]
+                            << " pen=" << pen
+                            << " ny=" << n_data[1 * nq + q]
+                            << " area=" << area
+                            << " vol0=" << vol0 << " vol1=" << vol1
+                            << "\n";
+                    }
+                }
+            }
+        }
+    }
 }
 
 void Elasticity::traction_boundary(std::size_t fctNo, FacetInfo const& info,

@@ -12,8 +12,10 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdio>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <mpi.h>
 #include <optional>
@@ -191,31 +193,39 @@ double RateAndState<Law>::rhs(double time, std::size_t faultNo,
 
         // v58 tip diagnostic: compare with MFEM [TIP-MON]
         // Tandem coords: x=strike(km), z=-depth(km). Tip at |x|>48km, -z<2.5km.
-        // Prints raw friction inputs: sn (normal traction from adapter),
-        // tau (tangential traction), psi, V. Compare MFEM sn_el with sn here.
-        // Throttle: log once per ~0.01 yr window to avoid RK-stage flooding.
+        // Throttle: log all matching tip DOFs once per time window.
+        // The static last_log_time tracks the raw time (not yr) so that
+        // multiple rhs() calls at the same PETSc time are deduplicated,
+        // but all tip DOFs within one call are printed.
         {
-            double xs = x[0], zd = -x[2];
-            if (std::abs(xs) > 48.0 && zd < 2.5) {
-                double t_yr = time / 3.15576e7;
-                static double last_log_yr = -1.0;
-                double interval = (t_yr < 0.01) ? 1e-7 :
-                                  (t_yr < 0.40) ? 0.01 :
-                                  (t_yr < 0.50) ? 0.002 : 0.0005;
-                if (t_yr - last_log_yr >= interval) {
-                    last_log_yr = t_yr;
-                    int rank = 0;
-                    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-                    std::cerr << std::scientific << std::setprecision(8)
-                        << "[TND-TIP] t=" << t_yr
-                        << " r=" << rank
-                        << " fn=" << faultNo << " n=" << node
-                        << " x=" << xs << " z=" << zd
-                        << " sn=" << sn
-                        << " psi=" << psi
-                        << " |V|=" << V
-                        << " tau=(" << tau[0] << "," << tau[1] << ")"
-                        << "\n";
+            static int tip_enabled = -1;
+            if (tip_enabled < 0) {
+                const char* env = std::getenv("TANDEM_DIAG_TIP_UY");
+                tip_enabled = (env && std::string(env) == "1") ? 1 : 0;
+            }
+            if (tip_enabled) {
+                double xs = x[0], zd = -x[2];
+                if (std::abs(xs) > 48.0 && zd < 2.5) {
+                    double t_yr = time / 3.15576e7;
+                    static double last_log_time = -1.0;
+                    double interval_s = (t_yr < 0.01) ? 3.15576e0 :
+                                        (t_yr < 0.40) ? 3.15576e5 :
+                                        (t_yr < 0.50) ? 6.31152e4 : 1.57788e4;
+                    if (time - last_log_time >= interval_s) {
+                        if (node == 0) { last_log_time = time; }
+                        int rank = 0;
+                        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+                        std::cerr << std::scientific << std::setprecision(8)
+                            << "[TND-TIP] t=" << t_yr
+                            << " r=" << rank
+                            << " fn=" << faultNo << " n=" << node
+                            << " x=" << xs << " z=" << zd
+                            << " sn=" << sn
+                            << " psi=" << psi
+                            << " |V|=" << V
+                            << " tau=(" << tau[0] << "," << tau[1] << ")"
+                            << "\n";
+                    }
                 }
             }
         }
