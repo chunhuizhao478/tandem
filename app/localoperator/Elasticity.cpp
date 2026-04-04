@@ -21,6 +21,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mpi.h>
+#include <sstream>
 
 namespace tensor = tndm::elasticity::tensor;
 namespace init = tndm::elasticity::init;
@@ -1061,13 +1062,14 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                 int rank = 0;
                 MPI_Comm_rank(MPI_COMM_WORLD, &rank);
                 double pen = penalty_[fctNo];
-                double c00 = -pen;  // penalty coefficient (Tandem convention)
+                double c00 = -pen;
                 double vol0 = volume_[info.up[0]];
                 double vol1 = volume_[info.up[1]];
                 double area = area_[fctNo];
 
-                // Header: time, face geometry
-                std::cerr << std::scientific << std::setprecision(10)
+                // Buffer all output, flush once to avoid MPI interleaving
+                std::ostringstream buf;
+                buf << std::scientific << std::setprecision(10)
                     << "[TND-TQ] t=" << diag_t_
                     << " r=" << rank
                     << " fct=" << fctNo
@@ -1094,12 +1096,11 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                     double slip_y = f_q_raw[1 * nq + q];
                     double jump_y = u0_y - u1_y - slip_y;
 
-                    // Penalty contribution: c00 * (u0 - u1 - f) per component
                     double Ty_penalty = c00 * jump_y;
                     double Ty = result(1, q);
                     double Ty_stress = Ty - Ty_penalty;
 
-                    std::cerr << std::scientific << std::setprecision(10)
+                    buf << std::scientific << std::setprecision(10)
                         << "[TND-TQ] q=" << q
                         << " xyz=(" << coords_q(0, q)
                         << "," << coords_q(1, q)
@@ -1114,6 +1115,7 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                         << " Ty=" << Ty
                         << "\n";
                 }
+                std::cerr << buf.str() << std::flush;
             }
         }
     }
