@@ -1064,16 +1064,38 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                 double vol0 = volume_[info.up[0]];
                 double vol1 = volume_[info.up[1]];
                 double area = area_[fctNo];
+
+                // Interpolate u0_y, u1_y, slip_y at each QP
+                // E_q[side](l, q) basis functions, u[side](l, p) displacements
+                // f_q_raw(p, q) prescribed slip
+                auto const* E_q0 = E_q[info.localNo[0]].data();
+                auto const* E_q1 = E_q[info.localNo[1]].data();
+                std::size_t nbf_loc = static_cast<std::size_t>(
+                    tensor::u::Shape[0]);  // DOFs per element
+
                 for (int q = 0; q < nq; q++) {
+                    // u_y at QP q: Σ_l E_q(l,q) * u(l, 1)
+                    double u0_y = 0.0, u1_y = 0.0;
+                    auto const* u0d = u0.data();
+                    auto const* u1d = u1.data();
+                    for (std::size_t l = 0; l < nbf_loc; l++) {
+                        u0_y += E_q0[l * nq + q] * u0d[l * Dim + 1];
+                        u1_y += E_q1[l * nq + q] * u1d[l * Dim + 1];
+                    }
+                    double slip_y = f_q_raw[1 * nq + q];
+                    double jump_y = u0_y - u1_y - slip_y;
+
                     std::cerr << std::scientific << std::setprecision(10)
                         << "[TND-TQ] r=" << rank
                         << " fct=" << fctNo
                         << " q=" << q
                         << " cx=" << cx
                         << " cz=" << cz
-                        << " Tx=" << result(0, q)
+                        << " u0_y=" << u0_y
+                        << " u1_y=" << u1_y
+                        << " slip_y=" << slip_y
+                        << " jump_y=" << jump_y
                         << " Ty=" << result(1, q)
-                        << " Tz=" << result(2, q)
                         << " pen=" << pen
                         << " ny=" << unit_normal_q(1, q)
                         << " area=" << area
