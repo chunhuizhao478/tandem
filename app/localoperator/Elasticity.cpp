@@ -1001,37 +1001,30 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
         if (tq_enabled && !tq_done) {
             int nq = result.shape(1);
             double Ty0 = result.data()[1 * nq + 0];
-            if (std::abs(Ty0) > 1e-20) {
-                // Non-zero traction — check face centroid via element midpoint
-                // Use pre-computed area/volume to identify the face, and
-                // penalty magnitude as proxy for tip proximity (tip faces
-                // have smaller elements → larger area/volume → larger penalty).
-                // For direct position filter, use the UnitNormal to confirm
-                // this is a fault face and penalty > 1.5e9 for tip faces.
+            if (std::abs(Ty0) > 1e-30) {
+                tq_done = true;
+                int rank = 0;
+                MPI_Comm_rank(MPI_COMM_WORLD, &rank);
                 double pen = penalty_[fctNo];
                 auto* n_data = fct[fctNo].get<UnitNormal>().data()->data();
-                double ny = n_data[1];
-                // Fault face (|ny|≈1) AND tip face (high penalty, >1.5 in
-                // Tandem units where penalty is in GPa-scale for km-mesh)
-                if (std::abs(std::abs(ny) - 1.0) < 0.1 && pen > 1.5) {
-                    tq_done = true;  // done after first matching tip face
-                    int rank = 0;
-                    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-                    double vol0 = volume_[info.up[0]];
-                    double vol1 = volume_[info.up[1]];
-                    double area = area_[fctNo];
-                    for (int q = 0; q < nq; q++) {
-                        std::cerr << std::scientific << std::setprecision(10)
-                            << "[TND-TQ] r=" << rank
-                            << " fct=" << fctNo
-                            << " q=" << q
-                            << " Ty=" << result.data()[1 * nq + q]
-                            << " pen=" << pen
-                            << " ny=" << n_data[1 * nq + q]
-                            << " area=" << area
-                            << " vol0=" << vol0 << " vol1=" << vol1
-                            << "\n";
-                    }
+                double vol0 = volume_[info.up[0]];
+                double vol1 = volume_[info.up[1]];
+                double area = area_[fctNo];
+                for (int q = 0; q < nq; q++) {
+                    // UnitNormal is AoS: [nx_q0,ny_q0,nz_q0, nx_q1,...]
+                    double ny_q = n_data[q * Dim + 1];
+                    std::cerr << std::scientific << std::setprecision(10)
+                        << "[TND-TQ] r=" << rank
+                        << " fct=" << fctNo
+                        << " q=" << q
+                        << " Tx=" << result.data()[0 * nq + q]
+                        << " Ty=" << result.data()[1 * nq + q]
+                        << " Tz=" << result.data()[2 * nq + q]
+                        << " pen=" << pen
+                        << " ny=" << ny_q
+                        << " area=" << area
+                        << " vol0=" << vol0 << " vol1=" << vol1
+                        << "\n";
                 }
             }
         }
