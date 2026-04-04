@@ -18,6 +18,7 @@
 #include <Eigen/LU>
 #include <cassert>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <mpi.h>
 
