@@ -1050,10 +1050,10 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                           << "\n";
             }
 
+            // Target MFEM face: cx=-49.4401, cz=2.0121
             bool left_tip_match =
-                (cx < -48.5 && cz < 2.5 &&
-                 std::abs(cx + 49.44) < 1.0 &&
-                 std::abs(cz - 2.01) < 1.0 &&
+                (std::abs(cx + 49.44) < 0.3 &&
+                 std::abs(cz - 2.01) < 0.3 &&
                  std::abs(std::abs(ny_avg) - 1.0) < 0.1);
 
             if (left_tip_match && std::abs(Ty0) > 1e-30) {
