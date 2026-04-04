@@ -1070,7 +1070,7 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                 // f_q_raw(p, q) prescribed slip
                 auto const* E_q0 = E_q[info.localNo[0]].data();
                 auto const* E_q1 = E_q[info.localNo[1]].data();
-                std::size_t nbf_loc = tensor::u::Shape[0];  // DOFs per element
+                std::size_t nbf_loc = E_q[info.localNo[0]].shape(0);  // basis functions per element
 
                 for (int q = 0; q < nq; q++) {
                     // u_y at QP q: Σ_l E_q(l,q) * u(l, 1)
