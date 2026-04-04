@@ -1,6 +1,7 @@
 #include "SeasQDOperator.h"
 
 #include "form/RefElement.h"
+#include "localoperator/Elasticity.h"
 
 namespace tndm {
 
@@ -32,6 +33,7 @@ void SeasQDOperator::initial_condition(BlockVector& state) {
 }
 
 void SeasQDOperator::rhs(double time, BlockVector const& state, BlockVector& result) {
+    Elasticity::SetDiagTime(time);
     update_ghost_state(state);
     solve(time, make_state_view(state));
     update_traction(make_state_view(state));

@@ -88,6 +88,10 @@ public:
 
     inline double cfl_time_step(std::size_t elNo) const { return cfl_dt_[elNo]; }
 
+    /// Set current simulation time for [TND-TQ] diagnostic.
+    static void SetDiagTime(double t) { diag_t_ = t; }
+    static inline double diag_t_ = 0.0;
+
     FiniteElementFunction<DomainDimension> solution_prototype(std::size_t numLocalElements) const {
         auto names = std::vector<std::string>(NumQuantities);
         char buf[100];

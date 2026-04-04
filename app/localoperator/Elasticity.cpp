@@ -1061,19 +1061,29 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                 int rank = 0;
                 MPI_Comm_rank(MPI_COMM_WORLD, &rank);
                 double pen = penalty_[fctNo];
+                double c00 = -pen;  // penalty coefficient (Tandem convention)
                 double vol0 = volume_[info.up[0]];
                 double vol1 = volume_[info.up[1]];
                 double area = area_[fctNo];
 
-                // Interpolate u0_y, u1_y, slip_y at each QP
-                // E_q[side](l, q) basis functions, u[side](l, p) displacements
-                // f_q_raw(p, q) prescribed slip
+                // Header: time, face geometry
+                std::cerr << std::scientific << std::setprecision(10)
+                    << "[TND-TQ] t=" << diag_t_
+                    << " r=" << rank
+                    << " fct=" << fctNo
+                    << " key=(" << info.key[0]
+                    << "," << info.key[1]
+                    << "," << info.key[2] << ")"
+                    << " pen=" << pen
+                    << " area=" << area
+                    << " vol0=" << vol0 << " vol1=" << vol1
+                    << "\n";
+
                 auto const* E_q0 = E_q[info.localNo[0]].data();
                 auto const* E_q1 = E_q[info.localNo[1]].data();
-                std::size_t nbf_loc = E_q[info.localNo[0]].shape(0);  // basis functions per element
+                std::size_t nbf_loc = E_q[info.localNo[0]].shape(0);
 
                 for (int q = 0; q < nq; q++) {
-                    // u_y at QP q: Σ_l E_q(l,q) * u(l, 1)
                     double u0_y = 0.0, u1_y = 0.0;
                     auto const* u0d = u0.data();
                     auto const* u1d = u1.data();
@@ -1084,24 +1094,24 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                     double slip_y = f_q_raw[1 * nq + q];
                     double jump_y = u0_y - u1_y - slip_y;
 
+                    // Penalty contribution: c00 * (u0 - u1 - f) per component
+                    double Ty_penalty = c00 * jump_y;
+                    double Ty = result(1, q);
+                    double Ty_stress = Ty - Ty_penalty;
+
                     std::cerr << std::scientific << std::setprecision(10)
-                        << "[TND-TQ] r=" << rank
-                        << " fct=" << fctNo
-                        << " q=" << q
-                        << " key=(" << info.key[0]
-                        << "," << info.key[1]
-                        << "," << info.key[2] << ")"
-                        << " cx=" << cx
-                        << " cz=" << cz
+                        << "[TND-TQ] q=" << q
+                        << " xyz=(" << coords_q(0, q)
+                        << "," << coords_q(1, q)
+                        << "," << coords_q(2, q) << ")"
+                        << " ny=" << unit_normal_q(1, q)
                         << " u0_y=" << u0_y
                         << " u1_y=" << u1_y
                         << " slip_y=" << slip_y
                         << " jump_y=" << jump_y
-                        << " Ty=" << result(1, q)
-                        << " pen=" << pen
-                        << " ny=" << unit_normal_q(1, q)
-                        << " area=" << area
-                        << " vol0=" << vol0 << " vol1=" << vol1
+                        << " Ty_stress=" << Ty_stress
+                        << " Ty_penalty=" << Ty_penalty
+                        << " Ty=" << Ty
                         << "\n";
                 }
             }
