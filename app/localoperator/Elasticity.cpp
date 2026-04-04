@@ -989,69 +989,47 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
     krnl.u(1) = u1.data();
     krnl.execute();
 
-    // v58: one-shot dump of traction_q and penalty at tip faces.
+    // v58: dump traction_q at ALL fault faces on the first non-zero call.
     // Opt-in: set TANDEM_DIAG_TIP_UY=1 to enable.
+    // Prints only QP 0 per face. Grep for high penalty to find tip faces.
     {
         static int tq_enabled = -1;
-        static bool tq_armed_printed = false;
         if (tq_enabled < 0) {
             const char* env = std::getenv("TANDEM_DIAG_TIP_UY");
             tq_enabled = (env && std::string(env) == "1") ? 1 : 0;
         }
-        static bool tq_done = false;
-        static int tq_call_count = 0;
-        if (tq_enabled && !tq_done) {
-            if (!tq_armed_printed) {
-                tq_armed_printed = true;
-                int rank = 0;
-                MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-                std::cerr << "[TND-TQ-ARMED] r=" << rank
-                          << " fct=" << fctNo
-                          << " up0=" << info.up[0]
-                          << " up1=" << info.up[1]
-                          << "\n";
-            }
-            int nq = result.shape(1);
+        static int tq_phase = 0;  // 0=waiting, 1=dumping, 2=done
+        static int tq_count = 0;
+        if (tq_enabled && tq_phase < 2) {
             double Ty0 = result(1, 0);
-            double Tx0 = result(0, 0);
-            double Tz0 = result(2, 0);
-            // Print first 3 calls to see what values come through
-            if (tq_call_count < 3) {
-                tq_call_count++;
-                int rank = 0;
-                MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-                std::cerr << "[TND-TQ-DBG] r=" << rank
-                    << " fct=" << fctNo
-                    << " call=" << tq_call_count
-                    << " Tx0=" << Tx0 << " Ty0=" << Ty0 << " Tz0=" << Tz0
-                    << " up0=" << info.up[0] << " up1=" << info.up[1]
-                    << "\n";
+            if (tq_phase == 0 && std::abs(Ty0) > 1e-30) {
+                tq_phase = 1;
             }
-            if (std::abs(Ty0) > 1e-30) {
-                tq_done = true;
+            if (tq_phase == 1) {
+                tq_count++;
+                if (tq_count > 500) { tq_phase = 2; }  // cap output
+            }
+            if (tq_phase == 1) {
                 int rank = 0;
                 MPI_Comm_rank(MPI_COMM_WORLD, &rank);
                 double pen = penalty_[fctNo];
                 auto* n_data = fct[fctNo].get<UnitNormal>().data()->data();
+                double ny0 = n_data[1];  // AoS: ny at QP 0
                 double vol0 = volume_[info.up[0]];
                 double vol1 = volume_[info.up[1]];
                 double area = area_[fctNo];
-                for (int q = 0; q < nq; q++) {
-                    // UnitNormal is AoS: [nx_q0,ny_q0,nz_q0, nx_q1,...]
-                    double ny_q = n_data[q * Dim + 1];
-                    std::cerr << std::scientific << std::setprecision(10)
-                        << "[TND-TQ] r=" << rank
-                        << " fct=" << fctNo
-                        << " q=" << q
-                        << " Tx=" << result(0, q)
-                        << " Ty=" << result(1, q)
-                        << " Tz=" << result(2, q)
-                        << " pen=" << pen
-                        << " ny=" << ny_q
-                        << " area=" << area
-                        << " vol0=" << vol0 << " vol1=" << vol1
-                        << "\n";
-                }
+                // Print QP 0 only (one line per face)
+                std::cerr << std::scientific << std::setprecision(10)
+                    << "[TND-TQ] r=" << rank
+                    << " fct=" << fctNo
+                    << " Tx=" << result(0, 0)
+                    << " Ty=" << Ty0
+                    << " Tz=" << result(2, 0)
+                    << " pen=" << pen
+                    << " ny=" << ny0
+                    << " area=" << area
+                    << " vol0=" << vol0 << " vol1=" << vol1
+                    << "\n";
             }
         }
     }
