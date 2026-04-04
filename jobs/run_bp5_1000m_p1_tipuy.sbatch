@@ -18,7 +18,7 @@ module load impi/19.0.9
 export OMP_NUM_THREADS=1
 export TANDEM_DIAG_TIP_UY=1
 
-TANDEM=/scratch2/10024/zhaochun/tandem/build_3d_1p_tipdiag/app/tandem
+TANDEM=/scratch2/10024/zhaochun/tandem/build_3d_1p_tipuy/app/tandem
 OPTIONS=/scratch2/10024/zhaochun/tandem/tandem/examples/options
 
 echo "num_nodes: $SLURM_JOB_NUM_NODES ntasks: $SLURM_NTASKS"
