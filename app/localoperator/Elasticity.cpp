@@ -1000,7 +1000,7 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
         static bool tq_done = false;
         if (tq_enabled && !tq_done) {
             int nq = result.shape(1);
-            double Ty0 = result.data()[1 * nq + 0];
+            double Ty0 = result(1, 0);
             if (std::abs(Ty0) > 1e-30) {
                 tq_done = true;
                 int rank = 0;
@@ -1017,9 +1017,9 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                         << "[TND-TQ] r=" << rank
                         << " fct=" << fctNo
                         << " q=" << q
-                        << " Tx=" << result.data()[0 * nq + q]
-                        << " Ty=" << result.data()[1 * nq + q]
-                        << " Tz=" << result.data()[2 * nq + q]
+                        << " Tx=" << result(0, q)
+                        << " Ty=" << result(1, q)
+                        << " Tz=" << result(2, q)
                         << " pen=" << pen
                         << " ny=" << ny_q
                         << " area=" << area
