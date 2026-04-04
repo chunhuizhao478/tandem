@@ -23,6 +23,10 @@ OPTIONS=/scratch2/10024/zhaochun/tandem/tandem/examples/options
 
 echo "num_nodes: $SLURM_JOB_NUM_NODES ntasks: $SLURM_NTASKS"
 echo "TANDEM_DIAG_TIP_UY=$TANDEM_DIAG_TIP_UY"
+echo "TANDEM=$TANDEM"
+ls -l "$TANDEM"
+echo "binary markers:"
+strings "$TANDEM" | grep -E "TND-TQ-ARMED|TND-TQ-DBG|TND-TQ|TND-TIP" | head -10
 
 ibrun $TANDEM bp5.toml --petsc \
       -options_file ${OPTIONS}/lu_mumps.cfg \

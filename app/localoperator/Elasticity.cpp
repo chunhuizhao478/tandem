@@ -993,14 +993,40 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
     // Opt-in: set TANDEM_DIAG_TIP_UY=1 to enable.
     {
         static int tq_enabled = -1;
+        static bool tq_armed_printed = false;
         if (tq_enabled < 0) {
             const char* env = std::getenv("TANDEM_DIAG_TIP_UY");
             tq_enabled = (env && std::string(env) == "1") ? 1 : 0;
         }
         static bool tq_done = false;
+        static int tq_call_count = 0;
         if (tq_enabled && !tq_done) {
+            if (!tq_armed_printed) {
+                tq_armed_printed = true;
+                int rank = 0;
+                MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+                std::cerr << "[TND-TQ-ARMED] r=" << rank
+                          << " fct=" << fctNo
+                          << " up0=" << info.up[0]
+                          << " up1=" << info.up[1]
+                          << "\n";
+            }
             int nq = result.shape(1);
             double Ty0 = result(1, 0);
+            double Tx0 = result(0, 0);
+            double Tz0 = result(2, 0);
+            // Print first 3 calls to see what values come through
+            if (tq_call_count < 3) {
+                tq_call_count++;
+                int rank = 0;
+                MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+                std::cerr << "[TND-TQ-DBG] r=" << rank
+                    << " fct=" << fctNo
+                    << " call=" << tq_call_count
+                    << " Tx0=" << Tx0 << " Ty0=" << Ty0 << " Tz0=" << Tz0
+                    << " up0=" << info.up[0] << " up1=" << info.up[1]
+                    << "\n";
+            }
             if (std::abs(Ty0) > 1e-30) {
                 tq_done = true;
                 int rank = 0;
