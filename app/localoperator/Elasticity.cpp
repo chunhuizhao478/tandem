@@ -1088,6 +1088,9 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                         << "[TND-TQ] r=" << rank
                         << " fct=" << fctNo
                         << " q=" << q
+                        << " key=(" << info.key[0]
+                        << "," << info.key[1]
+                        << "," << info.key[2] << ")"
                         << " cx=" << cx
                         << " cz=" << cz
                         << " u0_y=" << u0_y

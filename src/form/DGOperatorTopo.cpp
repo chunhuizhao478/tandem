@@ -58,6 +58,10 @@ DGOperatorTopo::DGOperatorTopo(LocalSimplexMesh<D> const& mesh, MPI_Comm comm)
             info.localNo[0] = localFctNo;
             info.inside[0] = elNos[0] < numLocalElems_;
             info.bc = boundaryData->getBoundaryConditions()[fctNo];
+            auto const& facet = mesh.facets()[fctNo];
+            for (std::size_t k = 0; k < facet.size(); ++k) {
+                info.key[k] = facet[k];
+            }
 
             if (elNos.size() > 1) {
                 auto dwsOther = mesh.template downward<D - 1u, D>(elNos[1]);

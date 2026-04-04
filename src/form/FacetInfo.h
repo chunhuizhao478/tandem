@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace tndm {
 
@@ -21,6 +22,7 @@ struct FacetInfo {
     std::array<std::size_t, 2> up;
     std::array<std::size_t, 2> g_up;
     std::array<std::size_t, 2> localNo;
+    std::array<std::uint64_t, 3> key{{0, 0, 0}};
     BC bc;
 };
 
