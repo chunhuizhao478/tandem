@@ -545,22 +545,21 @@ bool Elasticity::assemble_volume(std::size_t elNo, Matrix<double>& A00,
     krnl.mu_W_J_Q = volPre[elNo].get<mu_W_J_Q>().data();
     krnl.execute();
 
-    // First-step K dump: volume contribution
+    // First-step K dump: volume contribution.
+    // Separate file from skeleton to avoid truncation conflicts.
     if (first_step_dump_active()) {
-        // Check if this element is a parent of any matched face
-        // (dump all volume contributions — filter offline)
         static bool vol_header = false;
-        std::ofstream out = first_step_open("first_step_K_contributions", vol_header);
+        std::ofstream out = first_step_open("first_step_K_volume", vol_header);
         if (out) {
             if (!vol_header) {
-                out << "source,elem_or_face,elem1,elem2,block,row,col,value\n";
+                out << "source,elem,block,row,col,value\n";
                 vol_header = true;
             }
             int n = static_cast<int>(A00.shape(0));
             for (int i = 0; i < n; i++) {
                 for (int j = 0; j < n; j++) {
                     if (std::abs(A00(i,j)) > 1e-50) {
-                        out << "volume," << elNo << "," << elNo << ",-1,A00,"
+                        out << "volume," << elNo << ",A00,"
                             << i << "," << j << "," << std::setprecision(17)
                             << A00(i,j) << "\n";
                     }
@@ -676,17 +675,18 @@ bool Elasticity::assemble_skeleton(std::size_t fctNo, FacetInfo const& info, Mat
     krnl.execute(1, 0);
     krnl.execute(1, 1);
 
-    // First-step K dump: skeleton face contribution
+    // First-step K dump: skeleton face contribution.
+    // Separate file from volume to avoid truncation conflicts.
     if (first_step_dump_active()) {
         auto coords_q = Matrix<double const>(
             fct[fctNo].template get<Coords>().data()->data(),
             NumQuantities, fctRule.size());
         if (first_step_dump_match(coords_q)) {
             static bool skel_header = false;
-            std::ofstream out = first_step_open("first_step_K_contributions", skel_header);
+            std::ofstream out = first_step_open("first_step_K_skeleton", skel_header);
             if (out) {
                 if (!skel_header) {
-                    out << "source,elem_or_face,elem1,elem2,block,row,col,value\n";
+                    out << "source,fct,elem0,elem1,block,row,col,value\n";
                     skel_header = true;
                 }
                 auto dump_block = [&](char const* blk, Matrix<double> const& M) {
