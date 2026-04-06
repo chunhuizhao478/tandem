@@ -13,6 +13,9 @@
 #include "parallel/SparseBlockVector.h"
 #include "tensor/Managed.h"
 #include "tensor/Reshape.h"
+
+#include <iostream>
+#include <mpi.h>
 #include "tensor/Tensor.h"
 #include "util/Scratch.h"
 
@@ -184,6 +187,47 @@ public:
             }
         }
         matrix.end_assembly();
+
+        // K assembly diagnostics: count faces/elements processed.
+        {
+            long long local_volume = topo_->numLocalElements();
+            long long local_skeleton = 0;    // interior + shared (two-sided)
+            long long local_boundary = 0;    // boundary (one-sided)
+            long long local_skeleton_both_inside = 0;  // both elems local
+            long long local_skeleton_one_inside = 0;   // one local, one ghost (shared)
+            for (std::size_t fctNo = 0; fctNo < topo_->numLocalFacets(); ++fctNo) {
+                auto const& info = topo_->info(fctNo);
+                if (info.up[0] != info.up[1]) {
+                    local_skeleton++;
+                    if (info.inside[0] && info.inside[1]) {
+                        local_skeleton_both_inside++;
+                    } else {
+                        local_skeleton_one_inside++;
+                    }
+                } else {
+                    local_boundary++;
+                }
+            }
+
+            long long counts[5] = {local_volume, local_skeleton,
+                                   local_skeleton_both_inside,
+                                   local_skeleton_one_inside, local_boundary};
+            long long global[5] = {0};
+            MPI_Allreduce(counts, global, 5, MPI_LONG_LONG, MPI_SUM,
+                          MPI_COMM_WORLD);
+            int rank;
+            MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+            if (rank == 0) {
+                std::cerr << "  [K-DIAG] Volume elements:           " << global[0] << "\n";
+                std::cerr << "  [K-DIAG] Skeleton faces (total):    " << global[1] << "\n";
+                std::cerr << "  [K-DIAG]   both-inside (interior):  " << global[2] << "\n";
+                std::cerr << "  [K-DIAG]   one-inside (shared):     " << global[3] << "\n";
+                std::cerr << "  [K-DIAG] Boundary faces:            " << global[4] << "\n";
+                std::cerr << "  [K-DIAG] Total K contributions:     "
+                          << global[0] + global[1] + global[4]
+                          << " (vol + skeleton + bdr)\n";
+            }
+        }
     }
 
     void rhs(BlockVector& vector) override {
