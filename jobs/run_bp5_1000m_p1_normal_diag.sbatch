@@ -1,14 +1,4 @@
 #!/bin/bash
-set -euo pipefail
-
-ROOT=/scratch2/10024/zhaochun/tandem
-SRC_DIR=${ROOT}/tandem/examples/tandem/3d
-RUN_DIR=${ROOT}/bp5_1000m_p1_normal_diag
-BUILD_DIR=${ROOT}/build_3d_1p_tipdiag
-TANDEM=${BUILD_DIR}/app/tandem
-OPTIONS=${ROOT}/tandem/examples/options
-CONFIG=bp5_normal_diag.toml
-
 #SBATCH -J bp5_tnd_norm
 #SBATCH -o /scratch2/10024/zhaochun/tandem/bp5_1000m_p1_normal_diag/bp5_tnd_norm_%j.out
 #SBATCH -e /scratch2/10024/zhaochun/tandem/bp5_1000m_p1_normal_diag/bp5_tnd_norm_%j.err
@@ -18,6 +8,16 @@ CONFIG=bp5_normal_diag.toml
 #SBATCH -t 02:00:00
 #SBATCH -A EAR20006
 #SBATCH --chdir=/scratch2/10024/zhaochun/tandem/bp5_1000m_p1_normal_diag
+
+set -euo pipefail
+
+ROOT=/scratch2/10024/zhaochun/tandem
+SRC_DIR=${ROOT}/tandem/examples/tandem/3d
+RUN_DIR=${ROOT}/bp5_1000m_p1_normal_diag
+BUILD_DIR=${ROOT}/build_3d_1p_tipdiag
+TANDEM=${BUILD_DIR}/app/tandem
+OPTIONS=${ROOT}/tandem/examples/options
+CONFIG=bp5_normal_diag.toml
 
 module load gcc/9.1.0
 module load impi/19.0.9
