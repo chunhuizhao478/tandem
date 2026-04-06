@@ -547,7 +547,11 @@ bool Elasticity::assemble_volume(std::size_t elNo, Matrix<double>& A00,
 
     // First-step K dump: volume contribution.
     // Separate file from skeleton to avoid truncation conflicts.
-    if (first_step_dump_active()) {
+    // Note: K assembly happens at t=0 (before diag_t_ is set), so we
+    // bypass the time check and use only the enabled/rank guard.
+    if (first_step_dump_config().enabled &&
+        (first_step_dump_config().target_rank < 0 ||
+         first_step_dump_rank() == first_step_dump_config().target_rank)) {
         static bool vol_header = false;
         std::ofstream out = first_step_open("first_step_K_volume", vol_header);
         if (out) {
@@ -677,7 +681,10 @@ bool Elasticity::assemble_skeleton(std::size_t fctNo, FacetInfo const& info, Mat
 
     // First-step K dump: skeleton face contribution.
     // Separate file from volume to avoid truncation conflicts.
-    if (first_step_dump_active()) {
+    // Note: K assembly happens at t=0, so bypass the time check.
+    if (first_step_dump_config().enabled &&
+        (first_step_dump_config().target_rank < 0 ||
+         first_step_dump_rank() == first_step_dump_config().target_rank)) {
         auto coords_q = Matrix<double const>(
             fct[fctNo].template get<Coords>().data()->data(),
             NumQuantities, fctRule.size());
