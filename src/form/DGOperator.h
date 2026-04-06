@@ -14,6 +14,8 @@
 #include "tensor/Managed.h"
 #include "tensor/Reshape.h"
 
+#include "form/BC.h"
+
 #include <iostream>
 #include <mpi.h>
 #include "tensor/Tensor.h"
@@ -191,10 +193,13 @@ public:
         // K assembly diagnostics: count faces/elements processed.
         {
             long long local_volume = topo_->numLocalElements();
-            long long local_skeleton = 0;    // interior + shared (two-sided)
-            long long local_boundary = 0;    // boundary (one-sided)
-            long long local_skeleton_both_inside = 0;  // both elems local
-            long long local_skeleton_one_inside = 0;   // one local, one ghost (shared)
+            long long local_skeleton = 0;
+            long long local_boundary = 0;
+            long long local_skeleton_both_inside = 0;
+            long long local_skeleton_one_inside = 0;
+            // Per-BC boundary counts: None=0, Natural=1, Fault=3, Dirichlet=5
+            long long local_bdr_none = 0, local_bdr_natural = 0;
+            long long local_bdr_fault = 0, local_bdr_dirichlet = 0;
             for (std::size_t fctNo = 0; fctNo < topo_->numLocalFacets(); ++fctNo) {
                 auto const& info = topo_->info(fctNo);
                 if (info.up[0] != info.up[1]) {
@@ -206,14 +211,22 @@ public:
                     }
                 } else {
                     local_boundary++;
+                    switch (info.bc) {
+                    case BC::None:      local_bdr_none++; break;
+                    case BC::Natural:   local_bdr_natural++; break;
+                    case BC::Fault:     local_bdr_fault++; break;
+                    case BC::Dirichlet: local_bdr_dirichlet++; break;
+                    }
                 }
             }
 
-            long long counts[5] = {local_volume, local_skeleton,
+            long long counts[9] = {local_volume, local_skeleton,
                                    local_skeleton_both_inside,
-                                   local_skeleton_one_inside, local_boundary};
-            long long global[5] = {0};
-            MPI_Allreduce(counts, global, 5, MPI_LONG_LONG, MPI_SUM,
+                                   local_skeleton_one_inside, local_boundary,
+                                   local_bdr_none, local_bdr_natural,
+                                   local_bdr_fault, local_bdr_dirichlet};
+            long long global[9] = {0};
+            MPI_Allreduce(counts, global, 9, MPI_LONG_LONG, MPI_SUM,
                           MPI_COMM_WORLD);
             int rank;
             MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -222,10 +235,16 @@ public:
                 std::cerr << "  [K-DIAG] Skeleton faces (total):    " << global[1] << "\n";
                 std::cerr << "  [K-DIAG]   both-inside (interior):  " << global[2] << "\n";
                 std::cerr << "  [K-DIAG]   one-inside (shared):     " << global[3] << "\n";
-                std::cerr << "  [K-DIAG] Boundary faces:            " << global[4] << "\n";
+                std::cerr << "  [K-DIAG] Boundary faces (total):    " << global[4] << "\n";
+                std::cerr << "  [K-DIAG]   BC::None:                " << global[5] << "\n";
+                std::cerr << "  [K-DIAG]   BC::Natural (skipped):   " << global[6] << "\n";
+                std::cerr << "  [K-DIAG]   BC::Fault (K added):     " << global[7] << "\n";
+                std::cerr << "  [K-DIAG]   BC::Dirichlet (K added): " << global[8] << "\n";
+                std::cerr << "  [K-DIAG] Bdr faces with K:          "
+                          << global[7] + global[8] << " (Fault + Dirichlet)\n";
                 std::cerr << "  [K-DIAG] Total K contributions:     "
-                          << global[0] + global[1] + global[4]
-                          << " (vol + skeleton + bdr)\n";
+                          << global[0] + global[1] + global[7] + global[8]
+                          << " (vol + skeleton + bdr_with_K)\n";
             }
         }
     }
