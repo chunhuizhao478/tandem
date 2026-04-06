@@ -11,11 +11,17 @@
 
 set -euo pipefail
 
+# Self-contained Tandem BP5 normal-traction diagnostic run.
+# Adds fault probes at depth=40km (fault tip) to compare sigma_n_eff
+# with MFEM's traced blowup DOFs.
+
+# Fixed scratch layout
 ROOT=/scratch2/10024/zhaochun/tandem
 RUN_DIR=${ROOT}/bp5_1000m_p1_normal_diag
 BUILD_DIR=${ROOT}/build_3d_1p_normaldiag
 TANDEM=${BUILD_DIR}/app/tandem
 OPTIONS=${ROOT}/tandem/examples/options
+SRC_DIR=${ROOT}/tandem/examples/tandem/3d
 CONFIG=bp5_normal_diag.toml
 
 module load gcc/9.1.0
@@ -26,6 +32,11 @@ export TANDEM_DIAG_TIP_UY=1
 
 mkdir -p "$RUN_DIR"
 cd "$RUN_DIR"
+
+# Copy input files so the run directory is self-contained (no symlinks)
+cp -f "${SRC_DIR}/bp5.lua"              "$RUN_DIR/bp5.lua"
+cp -f "${SRC_DIR}/bp5.msh"             "$RUN_DIR/bp5.msh"
+cp -f "${SRC_DIR}/${CONFIG}"            "$RUN_DIR/${CONFIG}"
 
 echo "pwd=$(pwd)"
 echo "date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -38,10 +49,10 @@ echo "CONFIG=$CONFIG"
 ls -l "$TANDEM"
 echo "binary markers:"
 strings "$TANDEM" | grep -E "TND-TQ-ARMED|TND-TQ-DBG|TND-TQ|TND-TIP" | head -10 || true
-
 echo "input files:"
 ls -l "$CONFIG" bp5.lua bp5.msh
 
+# Fail fast if the binary is stale
 if ! grep -a -q "TND-TQ-ARMED" "$TANDEM"; then
   echo "ERROR: diagnostic binary marker TND-TQ-ARMED not found in $TANDEM" >&2
   exit 2
