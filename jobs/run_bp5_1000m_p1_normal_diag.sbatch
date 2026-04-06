@@ -33,10 +33,8 @@ export TANDEM_DIAG_TIP_UY=1
 mkdir -p "$RUN_DIR"
 cd "$RUN_DIR"
 
-# Copy input files so the run directory is self-contained (no symlinks)
-cp -f "${SRC_DIR}/bp5.lua"              "$RUN_DIR/bp5.lua"
-cp -f "${SRC_DIR}/bp5_tandem_1000m.msh" "$RUN_DIR/bp5.msh"
-cp -f "${SRC_DIR}/${CONFIG}"            "$RUN_DIR/${CONFIG}"
+# Input files (bp5.lua, bp5.msh, bp5_normal_diag.toml) must already
+# exist in RUN_DIR before submitting this job.
 
 echo "pwd=$(pwd)"
 echo "date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
