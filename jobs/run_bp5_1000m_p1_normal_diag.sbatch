@@ -48,7 +48,7 @@ strings "$TANDEM" | grep -E "TND-TQ-ARMED|TND-TQ-DBG|TND-TQ|TND-TIP" | head -10 
 echo "input files:"
 ls -l "$CONFIG" bp5.lua bp5.msh
 
-if ! strings "$TANDEM" | grep -q "TND-TQ-ARMED"; then
+if ! grep -a -q "TND-TQ-ARMED" "$TANDEM"; then
   echo "ERROR: diagnostic binary marker TND-TQ-ARMED not found in $TANDEM" >&2
   exit 2
 fi
