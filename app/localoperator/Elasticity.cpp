@@ -164,10 +164,10 @@ inline void first_step_write_face_rhs(std::size_t fctNo, FacetInfo const& info,
         }
     }
     for (std::size_t i = 0; i < B0.size(); ++i) {
-        write_row("elvec1", static_cast<int>(i), -1, B0[i]);
+        write_row("elvec1", static_cast<int>(i), -1, B0(i));
     }
     for (std::size_t i = 0; i < B1.size(); ++i) {
-        write_row("elvec2", static_cast<int>(i), -1, B1[i]);
+        write_row("elvec2", static_cast<int>(i), -1, B1(i));
     }
 }
 
@@ -1250,8 +1250,8 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                     double v0 = 0.0;
                     double v1 = 0.0;
                     for (std::size_t l = 0; l < nbf_loc; ++l) {
-                        v0 += E_q0[l * fctRule.size() + q] * u0[l * NumQuantities + c];
-                        v1 += E_q1[l * fctRule.size() + q] * u1[l * NumQuantities + c];
+                        v0 += E_q0[l * fctRule.size() + q] * u0.data()[l * NumQuantities + c];
+                        v1 += E_q1[l * fctRule.size() + q] * u1.data()[l * NumQuantities + c];
                     }
                     u0_q(c, q) = v0;
                     u1_q(c, q) = v1;
@@ -1270,8 +1270,10 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
                 }
                 nl_q[q] = nl;
             }
-            first_step_write_face_jump_and_trac(fctNo, info, coords_q, f_q, traction_q, u0_q, u1_q,
-                                                nl_q);
+            auto u0_q_c = Matrix<double const>(u0_q.data(), u0_q.shape(0), u0_q.shape(1));
+            auto u1_q_c = Matrix<double const>(u1_q.data(), u1_q.shape(0), u1_q.shape(1));
+            first_step_write_face_jump_and_trac(fctNo, info, coords_q, f_q, traction_q, u0_q_c,
+                                                u1_q_c, nl_q);
         }
     }
 
