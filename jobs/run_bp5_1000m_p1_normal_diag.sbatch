@@ -35,7 +35,7 @@ cd "$RUN_DIR"
 
 # Copy input files so the run directory is self-contained (no symlinks)
 cp -f "${SRC_DIR}/bp5.lua"              "$RUN_DIR/bp5.lua"
-cp -f "${SRC_DIR}/bp5.msh"             "$RUN_DIR/bp5.msh"
+cp -f "${SRC_DIR}/bp5_tandem_1000m.msh" "$RUN_DIR/bp5.msh"
 cp -f "${SRC_DIR}/${CONFIG}"            "$RUN_DIR/${CONFIG}"
 
 echo "pwd=$(pwd)"
