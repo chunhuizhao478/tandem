@@ -17,7 +17,9 @@
 
 #include <Eigen/LU>
 #include <cassert>
+#include <cmath>
 #include <cstdlib>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mpi.h>
@@ -28,6 +30,208 @@ namespace init = tndm::elasticity::init;
 namespace kernel = tndm::elasticity::kernel;
 
 namespace tndm {
+
+namespace {
+
+struct FirstStepDumpConfig {
+    bool enabled = false;
+    int target_rank = -1;
+    std::string output_dir = ".";
+    double x_min = -37.5;
+    double x_max = -35.5;
+    double depth_min = 38.5;
+    double depth_max = 40.5;
+};
+
+inline FirstStepDumpConfig const& first_step_dump_config() {
+    static FirstStepDumpConfig cfg = [] {
+        FirstStepDumpConfig c;
+        if (auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP"); env != nullptr) {
+            c.enabled = std::string(env) == "1";
+        }
+        if (auto const* env = std::getenv("TANDEM_FIRST_STEP_TARGET_RANK"); env != nullptr &&
+                                                               *env != '\0') {
+            c.target_rank = std::atoi(env);
+        }
+        if (auto const* env = std::getenv("TANDEM_FIRST_STEP_OUTPUT_DIR");
+            env != nullptr && *env != '\0') {
+            c.output_dir = env;
+        }
+        return c;
+    }();
+    return cfg;
+}
+
+inline int first_step_dump_rank() {
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    return rank;
+}
+
+inline bool first_step_dump_active() {
+    auto const& cfg = first_step_dump_config();
+    if (!(cfg.enabled && Elasticity::diag_t_ > 0.0 &&
+          (cfg.target_rank < 0 || first_step_dump_rank() == cfg.target_rank))) {
+        return false;
+    }
+    static bool armed_printed = false;
+    if (!armed_printed) {
+        armed_printed = true;
+        std::cerr << "[TND-FS-ARMED] r=" << first_step_dump_rank()
+                  << " t=" << Elasticity::diag_t_
+                  << " outdir=" << cfg.output_dir << "\n";
+    }
+    static double first_dump_time = -1.0;
+    if (first_dump_time < 0.0) {
+        first_dump_time = Elasticity::diag_t_;
+    }
+    double scale = std::max(1.0, std::abs(first_dump_time));
+    return std::abs(Elasticity::diag_t_ - first_dump_time) <= 1e-12 * scale;
+}
+
+inline std::string first_step_dump_path(char const* stem) {
+    auto const& cfg = first_step_dump_config();
+    std::ostringstream oss;
+    oss << cfg.output_dir;
+    if (!cfg.output_dir.empty() && cfg.output_dir.back() != '/') {
+        oss << "/";
+    }
+    oss << stem << "_r" << first_step_dump_rank() << ".csv";
+    return oss.str();
+}
+
+template <class CoordsTensor>
+bool first_step_dump_match(CoordsTensor const& coords_q) {
+    auto const& cfg = first_step_dump_config();
+    double cx = 0.0;
+    double depth = 0.0;
+    auto nq = coords_q.shape(1);
+    for (std::size_t q = 0; q < nq; ++q) {
+        cx += coords_q(0, q);
+        depth += -coords_q(2, q);
+    }
+    cx /= static_cast<double>(nq);
+    depth /= static_cast<double>(nq);
+    return (cx >= cfg.x_min && cx <= cfg.x_max && depth >= cfg.depth_min &&
+            depth <= cfg.depth_max);
+}
+
+inline char const* first_step_face_kind(BC bc, bool is_boundary = false) {
+    switch (bc) {
+    case BC::Fault:
+        return is_boundary ? "fault_boundary" : "fault_skeleton";
+    case BC::Dirichlet:
+        return is_boundary ? "dirichlet_boundary" : "dirichlet_skeleton";
+    default:
+        return "other";
+    }
+}
+
+/// Truncate a dump file on first open, then append for subsequent faces.
+/// Prevents stale data from previous runs accumulating in append mode.
+inline std::ofstream first_step_open(char const* stem, bool& header_written) {
+    if (!header_written) {
+        // First open: truncate to discard any leftover from previous runs
+        return std::ofstream(first_step_dump_path(stem), std::ios::trunc);
+    }
+    return std::ofstream(first_step_dump_path(stem), std::ios::app);
+}
+
+inline void first_step_write_face_rhs(std::size_t fctNo, FacetInfo const& info,
+                                      Matrix<double const> const& coords_q,
+                                      Matrix<double const> const& f_q,
+                                      Vector<double> const& B0,
+                                      Vector<double> const& B1,
+                                      bool is_boundary = false) {
+    static bool header_written = false;
+    std::ofstream out = first_step_open("first_step_face_rhs", header_written);
+    if (!out) {
+        return;
+    }
+    if (!header_written) {
+        out << "time,face_kind,fct,elem0,elem1,record,index0,index1,value\n";
+        header_written = true;
+    }
+    auto write_row = [&](char const* record, int i0, int i1, double value) {
+        out << std::setprecision(17) << Elasticity::diag_t_ << ","
+            << first_step_face_kind(info.bc, is_boundary) << "," << fctNo << "," << info.up[0] << ","
+            << info.up[1] << "," << record << "," << i0 << "," << i1 << "," << value << "\n";
+    };
+    for (std::size_t q = 0; q < coords_q.shape(1); ++q) {
+        write_row("phys_y", static_cast<int>(q), -1, coords_q(1, q));
+        for (std::size_t c = 0; c < f_q.shape(0); ++c) {
+            write_row("input_qp", static_cast<int>(q), static_cast<int>(c), f_q(c, q));
+        }
+    }
+    for (std::size_t i = 0; i < B0.size(); ++i) {
+        write_row("elvec1", static_cast<int>(i), -1, B0[i]);
+    }
+    for (std::size_t i = 0; i < B1.size(); ++i) {
+        write_row("elvec2", static_cast<int>(i), -1, B1[i]);
+    }
+}
+
+inline void first_step_write_face_jump_and_trac(
+    std::size_t fctNo, FacetInfo const& info, Matrix<double const> const& coords_q,
+    Matrix<double const> const& f_q, Matrix<double const> const& traction_q,
+    Matrix<double const> const& u0_q, Matrix<double const> const& u1_q,
+    std::vector<double> const& nl_q) {
+    static bool jump_header_written = false;
+    static bool trac_header_written = false;
+
+    {
+        std::ofstream out = first_step_open("first_step_face_jump", jump_header_written);
+        if (out) {
+            if (!jump_header_written) {
+                out << "time,face_kind,fct,elem0,elem1,record,q,component,value\n";
+                jump_header_written = true;
+            }
+            auto write_row = [&](char const* record, int q, int c, double value) {
+                out << std::setprecision(17) << Elasticity::diag_t_ << ","
+                    << first_step_face_kind(info.bc) << "," << fctNo << "," << info.up[0] << ","
+                    << info.up[1] << "," << record << "," << q << "," << c << "," << value
+                    << "\n";
+            };
+            for (std::size_t q = 0; q < traction_q.shape(1); ++q) {
+                for (std::size_t c = 0; c < traction_q.shape(0); ++c) {
+                    write_row("u1_q", static_cast<int>(q), static_cast<int>(c), u0_q(c, q));
+                    write_row("u2_q", static_cast<int>(q), static_cast<int>(c), u1_q(c, q));
+                    write_row("slip_q", static_cast<int>(q), static_cast<int>(c), f_q(c, q));
+                    write_row("jump_minus_slip", static_cast<int>(q), static_cast<int>(c),
+                              u0_q(c, q) - u1_q(c, q) - f_q(c, q));
+                }
+            }
+        }
+    }
+
+    {
+        std::ofstream out = first_step_open("first_step_face_trac", trac_header_written);
+        if (out) {
+            if (!trac_header_written) {
+                out << "time,face_kind,fct,elem0,elem1,record,index0,index1,value\n";
+                trac_header_written = true;
+            }
+            auto write_row = [&](char const* record, int i0, int i1, double value) {
+                out << std::setprecision(17) << Elasticity::diag_t_ << ","
+                    << first_step_face_kind(info.bc) << "," << fctNo << "," << info.up[0] << ","
+                    << info.up[1] << "," << record << "," << i0 << "," << i1 << "," << value
+                    << "\n";
+            };
+            for (std::size_t q = 0; q < traction_q.shape(1); ++q) {
+                write_row("phys_x", static_cast<int>(q), -1, coords_q(0, q));
+                write_row("phys_y", static_cast<int>(q), -1, coords_q(1, q));
+                write_row("phys_z", static_cast<int>(q), -1, coords_q(2, q));
+                write_row("nl_q", static_cast<int>(q), -1, nl_q[q]);
+                for (std::size_t c = 0; c < traction_q.shape(0); ++c) {
+                    write_row("traction_q", static_cast<int>(q), static_cast<int>(c),
+                              traction_q(c, q));
+                }
+            }
+        }
+    }
+}
+
+} // namespace
 
 Elasticity::Elasticity(std::shared_ptr<Curvilinear<DomainDimension>> cl, functional_t<1> lam,
                        functional_t<1> mu, std::optional<functional_t<1>> rho, DGMethod method)
@@ -643,6 +847,16 @@ bool Elasticity::rhs_skeleton(std::size_t fctNo, FacetInfo const& info, Vector<d
     rhs.mu_q(0) = fctPre[fctNo].get<mu_q_1>().data();
     rhs.execute();
 
+    if (first_step_dump_active()) {
+        auto coords_q = Matrix<double const>(fct[fctNo].template get<Coords>().data()->data(),
+                                             NumQuantities, fctRule.size());
+        if ((info.bc == BC::Fault || info.bc == BC::Dirichlet) &&
+            first_step_dump_match(coords_q)) {
+            auto f_q = Matrix<double const>(f_q_raw, NumQuantities, fctRule.size());
+            first_step_write_face_rhs(fctNo, info, coords_q, f_q, B0, B1);
+        }
+    }
+
     return true;
 }
 
@@ -695,6 +909,20 @@ bool Elasticity::rhs_boundary(std::size_t fctNo, FacetInfo const& info, Vector<d
     rhs.n_q = fct[fctNo].get<Normal>().data()->data();
     rhs.w = fctRule.weights().data();
     rhs.execute();
+
+    // First-step dump for boundary faces (mirrors the rhs_skeleton hook).
+    // Boundary faces only have B0 (one parent element), so pass an empty B1.
+    if (first_step_dump_active()) {
+        auto coords_q = Matrix<double const>(fct[fctNo].template get<Coords>().data()->data(),
+                                             NumQuantities, fctRule.size());
+        if (info.bc == BC::Dirichlet && first_step_dump_match(coords_q)) {
+            auto f_q = Matrix<double const>(f_q_raw, NumQuantities, fctRule.size());
+            // Create a zero-sized B1 placeholder (boundary has no second element)
+            Vector<double> B1_empty;
+            first_step_write_face_rhs(fctNo, info, coords_q, f_q, B0, B1_empty,
+                                      true /* is_boundary */);
+        }
+    }
 
     return true;
 }
@@ -989,6 +1217,63 @@ void Elasticity::traction_skeleton(std::size_t fctNo, FacetInfo const& info,
     krnl.u(0) = u0.data();
     krnl.u(1) = u1.data();
     krnl.execute();
+
+    if (first_step_dump_active()) {
+        auto coords_q = Matrix<double const>(fct[fctNo].template get<Coords>().data()->data(),
+                                             NumQuantities, fctRule.size());
+        if ((info.bc == BC::Fault || info.bc == BC::Dirichlet) &&
+            first_step_dump_match(coords_q)) {
+            auto f_q = Matrix<double const>(f_q_raw, NumQuantities, fctRule.size());
+            auto traction_q = Matrix<double const>(result.data(), NumQuantities, fctRule.size());
+            std::vector<double> u0_q_raw(NumQuantities * fctRule.size(), 0.0);
+            std::vector<double> u1_q_raw(NumQuantities * fctRule.size(), 0.0);
+            auto u0_q = Matrix<double>(u0_q_raw.data(), NumQuantities, fctRule.size());
+            auto u1_q = Matrix<double>(u1_q_raw.data(), NumQuantities, fctRule.size());
+            auto const* E_q0 = E_q[info.localNo[0]].data();
+            auto const* E_q1 = E_q[info.localNo[1]].data();
+            std::size_t nbf_loc = E_q[info.localNo[0]].shape(0);
+            // Sanity check: partition of unity (sum_l E_q[l,q] should be 1)
+            for (std::size_t q = 0; q < fctRule.size(); ++q) {
+                double pou0 = 0.0, pou1 = 0.0;
+                for (std::size_t l = 0; l < nbf_loc; ++l) {
+                    pou0 += E_q0[l * fctRule.size() + q];
+                    pou1 += E_q1[l * fctRule.size() + q];
+                }
+                if (std::abs(pou0 - 1.0) > 1e-10 || std::abs(pou1 - 1.0) > 1e-10) {
+                    std::cerr << "[TND-FS-WARN] E_q partition-of-unity failure at fct="
+                              << fctNo << " q=" << q
+                              << " pou0=" << pou0 << " pou1=" << pou1 << "\n";
+                }
+            }
+            for (std::size_t q = 0; q < fctRule.size(); ++q) {
+                for (std::size_t c = 0; c < NumQuantities; ++c) {
+                    double v0 = 0.0;
+                    double v1 = 0.0;
+                    for (std::size_t l = 0; l < nbf_loc; ++l) {
+                        v0 += E_q0[l * fctRule.size() + q] * u0[l * NumQuantities + c];
+                        v1 += E_q1[l * fctRule.size() + q] * u1[l * NumQuantities + c];
+                    }
+                    u0_q(c, q) = v0;
+                    u1_q(c, q) = v1;
+                }
+            }
+            std::vector<double> nl_q(fctRule.size());
+            auto unit_normal_q =
+                Tensor(fct[fctNo].template get<UnitNormal>().data()->data(),
+                       cl_->normalResultInfo(fctRule.size()));
+            auto normal_q = Tensor(fct[fctNo].template get<Normal>().data()->data(),
+                                   cl_->normalResultInfo(fctRule.size()));
+            for (std::size_t q = 0; q < fctRule.size(); ++q) {
+                double nl = 0.0;
+                for (std::size_t d = 0; d < NumQuantities; ++d) {
+                    nl += normal_q(d, q) * unit_normal_q(d, q);
+                }
+                nl_q[q] = nl;
+            }
+            first_step_write_face_jump_and_trac(fctNo, info, coords_q, f_q, traction_q, u0_q, u1_q,
+                                                nl_q);
+        }
+    }
 
     // v58: one-shot dump of traction_q at the left shallow tip face.
     // Opt-in: set TANDEM_DIAG_TIP_UY=1 to enable.
