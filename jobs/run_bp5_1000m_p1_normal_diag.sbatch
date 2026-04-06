@@ -2,10 +2,10 @@
 #SBATCH -J bp5_tnd_norm
 #SBATCH -o /scratch2/10024/zhaochun/tandem/bp5_1000m_p1_normal_diag/bp5_tnd_norm_%j.out
 #SBATCH -e /scratch2/10024/zhaochun/tandem/bp5_1000m_p1_normal_diag/bp5_tnd_norm_%j.err
-#SBATCH -p development
+#SBATCH -p normal
 #SBATCH -N 8
 #SBATCH -n 400
-#SBATCH -t 02:00:00
+#SBATCH -t 48:00:00
 #SBATCH -A EAR20006
 #SBATCH --chdir=/scratch2/10024/zhaochun/tandem/bp5_1000m_p1_normal_diag
 
