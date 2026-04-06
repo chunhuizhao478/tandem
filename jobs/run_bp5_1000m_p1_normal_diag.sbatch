@@ -12,7 +12,6 @@
 set -euo pipefail
 
 ROOT=/scratch2/10024/zhaochun/tandem
-SRC_DIR=${ROOT}/tandem/examples/tandem/3d
 RUN_DIR=${ROOT}/bp5_1000m_p1_normal_diag
 BUILD_DIR=${ROOT}/build_3d_1p_normaldiag
 TANDEM=${BUILD_DIR}/app/tandem
@@ -28,15 +27,10 @@ export TANDEM_DIAG_TIP_UY=1
 mkdir -p "$RUN_DIR"
 cd "$RUN_DIR"
 
-ln -sfn "${SRC_DIR}/${CONFIG}" "${CONFIG}"
-ln -sfn "${SRC_DIR}/bp5.lua" bp5.lua
-ln -sfn "${SRC_DIR}/bp5.msh" bp5.msh
-
 echo "pwd=$(pwd)"
 echo "date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "num_nodes: $SLURM_JOB_NUM_NODES ntasks: $SLURM_NTASKS"
 echo "TANDEM_DIAG_TIP_UY=$TANDEM_DIAG_TIP_UY"
-echo "SRC_DIR=$SRC_DIR"
 echo "RUN_DIR=$RUN_DIR"
 echo "BUILD_DIR=$BUILD_DIR"
 echo "TANDEM=$TANDEM"
