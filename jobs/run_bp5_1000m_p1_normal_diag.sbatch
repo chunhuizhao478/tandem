@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT=/scratch2/10024/zhaochun/tandem
 SRC_DIR=${ROOT}/tandem/examples/tandem/3d
 RUN_DIR=${ROOT}/bp5_1000m_p1_normal_diag
-BUILD_DIR=${ROOT}/build_3d_1p_normal_diag
+BUILD_DIR=${ROOT}/build_3d_1p_normaldiag
 TANDEM=${BUILD_DIR}/app/tandem
 OPTIONS=${ROOT}/tandem/examples/options
 CONFIG=bp5_normal_diag.toml
