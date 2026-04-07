@@ -70,7 +70,7 @@ inline int first_step_dump_rank() {
 
 inline bool first_step_dump_active() {
     auto const& cfg = first_step_dump_config();
-    if (!(cfg.enabled && Elasticity::diag_t_ > 0.005 &&
+    if (!(cfg.enabled && Elasticity::diag_t_ > 0.0 &&
           (cfg.target_rank < 0 || first_step_dump_rank() == cfg.target_rank))) {
         return false;
     }
