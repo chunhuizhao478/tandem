@@ -1,6 +1,12 @@
 #include "PetscLinearSolver.h"
 #include "common/PetscUtil.h"
 #include <petscpc.h>
+#include <petscvec.h>
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 
 namespace tndm {
 
@@ -13,6 +19,67 @@ PetscLinearSolver::PetscLinearSolver(AbstractDGOperator<DomainDimension>& dgop, 
 
     P_ = std::make_unique<PetscDGMatrix>(dgop.block_size(), topo);
     dgop.assemble(*P_);
+
+    // K·v diagnostic: apply assembled K to all-ones, dump for cross-code comparison.
+    // All ranks participate in MatMult (collective). Only target rank writes file.
+    {
+        auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
+        if (env != nullptr && std::string(env) == "1") {
+            Vec ones, Kv;
+            CHKERRTHROW(MatCreateVecs(P_->mat(), &ones, &Kv));
+            CHKERRTHROW(VecSet(ones, 1.0));
+            CHKERRTHROW(MatMult(P_->mat(), ones, Kv));
+
+            int rank;
+            MPI_Comm_rank(topo.comm(), &rank);
+            int target_rank = -1;
+            if (auto const* tr = std::getenv("TANDEM_FIRST_STEP_TARGET_RANK");
+                tr != nullptr && *tr != '\0') {
+                target_rank = std::atoi(tr);
+            }
+
+            if (target_rank < 0 || rank == target_rank) {
+                std::string outdir = ".";
+                if (auto const* od = std::getenv("TANDEM_FIRST_STEP_OUTPUT_DIR");
+                    od != nullptr && *od != '\0') {
+                    outdir = od;
+                }
+                std::ostringstream path;
+                path << outdir;
+                if (!outdir.empty() && outdir.back() != '/') path << "/";
+                path << "first_step_Kv_r" << rank << ".csv";
+
+                PetscInt local_size;
+                CHKERRTHROW(VecGetLocalSize(Kv, &local_size));
+                const PetscScalar *kv_arr;
+                CHKERRTHROW(VecGetArrayRead(Kv, &kv_arr));
+
+                std::ofstream out(path.str(), std::ios::trunc);
+                out << "local_dof,Kv_value\n";
+                out << std::setprecision(17);
+                for (PetscInt i = 0; i < local_size; i++) {
+                    out << i << "," << kv_arr[i] << "\n";
+                }
+                CHKERRTHROW(VecRestoreArrayRead(Kv, &kv_arr));
+                std::cout << "[K-DIAG] K·1 dumped to " << path.str()
+                          << " (" << local_size << " local DOFs)\n";
+            }
+
+            // Print global norms (rank 0 only, but computed collectively)
+            PetscReal norm1, norm2, norminf;
+            CHKERRTHROW(VecNorm(Kv, NORM_1, &norm1));
+            CHKERRTHROW(VecNorm(Kv, NORM_2, &norm2));
+            CHKERRTHROW(VecNorm(Kv, NORM_INFINITY, &norminf));
+            if (rank == 0) {
+                std::cout << "[K-DIAG] ||K·1||_1   = " << std::setprecision(15) << norm1 << "\n";
+                std::cout << "[K-DIAG] ||K·1||_2   = " << std::setprecision(15) << norm2 << "\n";
+                std::cout << "[K-DIAG] ||K·1||_inf = " << std::setprecision(15) << norminf << "\n";
+            }
+
+            CHKERRTHROW(VecDestroy(&ones));
+            CHKERRTHROW(VecDestroy(&Kv));
+        }
+    }
 
     b_ = std::make_unique<PetscVector>(dgop.block_size(), topo.numLocalElements(), topo.comm());
     x_ = std::make_unique<PetscVector>(*b_);
