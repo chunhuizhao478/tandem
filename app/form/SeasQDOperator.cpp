@@ -76,10 +76,13 @@ void SeasQDOperator::solve(double time, BlockView const& state_view) {
     {
         static bool norm_printed = false;
         auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
-        if (!norm_printed && env != nullptr && std::string(env) == "1" && time > 0.0) {
+        if (!norm_printed && env != nullptr && std::string(env) == "1" && time >= 0.009) {
             norm_printed = true;
             int rank;
             MPI_Comm_rank(comm(), &rank);
+            if (rank == 0) {
+                std::cout << "[NORM] Dump at time = " << std::setprecision(17) << time << "\n";
+            }
 
             auto print_vec_norm = [&](const char *label, Vec v) {
                 PetscReal n1, n2, ninf;
