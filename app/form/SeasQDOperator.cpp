@@ -72,7 +72,7 @@ void SeasQDOperator::solve(double time, BlockView const& state_view) {
     linear_solver_.solve();
 
     // Print global norms of b and u for cross-code comparison.
-    // Fires once at the first solve with t > 0 (matching MFEM first-step dump).
+    // Fires once at first solve with t >= 0.019 (last RK45 stage of first step).
     {
         static bool norm_printed = false;
         auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
