@@ -56,15 +56,17 @@ void SeasQDOperator::rhs(double time, BlockVector const& state, BlockVector& res
             int rank;
             MPI_Comm_rank(comm(), &rank);
 
-            // Traction norms (owned DOFs)
+            // Traction norms (owned DOFs, PetscVector — collective)
             PetscReal trac_n1, trac_ninf;
             VecNorm(traction_.vec(), NORM_1, &trac_n1);
             VecNorm(traction_.vec(), NORM_INFINITY, &trac_ninf);
 
-            // Result norms (contains V and dpsi/dt)
-            PetscReal res_n1, res_ninf;
-            VecNorm(result.vec(), NORM_1, &res_n1);
-            VecNorm(result.vec(), NORM_INFINITY, &res_ninf);
+            // Result norms: dynamic_cast to get PETSc vec
+            PetscReal res_n1 = 0.0, res_ninf = 0.0;
+            if (auto *pv = dynamic_cast<PetscVectorView*>(&result)) {
+                VecNorm(pv->vec(), NORM_1, &res_n1);
+                VecNorm(pv->vec(), NORM_INFINITY, &res_ninf);
+            }
 
             if (rank == 0) {
                 std::cout << std::setprecision(15);
