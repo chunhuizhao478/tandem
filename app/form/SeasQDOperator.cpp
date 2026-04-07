@@ -3,6 +3,13 @@
 #include "form/RefElement.h"
 #include "localoperator/Elasticity.h"
 
+#include <cmath>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <mpi.h>
+#include <petscvec.h>
+
 namespace tndm {
 
 SeasQDOperator::SeasQDOperator(std::unique_ptr<dg_t> dgop,
@@ -63,6 +70,35 @@ void SeasQDOperator::solve(double time, BlockView const& state_view) {
     }
     linear_solver_.update_rhs(*dgop_);
     linear_solver_.solve();
+
+    // Print global norms of b and u for cross-code comparison.
+    // Fires once at the first solve with t > 0 (matching MFEM first-step dump).
+    {
+        static bool norm_printed = false;
+        auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
+        if (!norm_printed && env != nullptr && std::string(env) == "1" && time > 0.0) {
+            norm_printed = true;
+            int rank;
+            MPI_Comm_rank(comm(), &rank);
+
+            auto print_vec_norm = [&](const char *label, Vec v) {
+                PetscReal n1, n2, ninf;
+                VecNorm(v, NORM_1, &n1);
+                VecNorm(v, NORM_2, &n2);
+                VecNorm(v, NORM_INFINITY, &ninf);
+                if (rank == 0) {
+                    std::cout << std::setprecision(15);
+                    std::cout << "[NORM] ||" << label << "||_1   = " << n1 << "\n";
+                    std::cout << "[NORM] ||" << label << "||_2   = " << n2 << "\n";
+                    std::cout << "[NORM] ||" << label << "||_inf = " << ninf << "\n";
+                }
+            };
+
+            print_vec_norm("b_total", linear_solver_.b().vec());
+            print_vec_norm("u", linear_solver_.x().vec());
+        }
+    }
+
     dgop_->set_slip(invalid_slip_bc());
     disp_scatter_.begin_scatter(linear_solver_.x(), disp_ghost_);
     disp_scatter_.wait_scatter();

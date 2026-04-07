@@ -48,6 +48,8 @@ public:
 
     inline auto& x() { return *x_; }
     inline auto const& x() const { return *x_; }
+    inline auto& b() { return *b_; }
+    inline auto const& b() const { return *b_; }
 
     inline KSP ksp() { return ksp_; }
 
