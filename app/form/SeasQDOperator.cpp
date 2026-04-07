@@ -71,17 +71,18 @@ void SeasQDOperator::solve(double time, BlockView const& state_view) {
     linear_solver_.update_rhs(*dgop_);
     linear_solver_.solve();
 
-    // Print global norms of b and u for cross-code comparison.
-    // Fires once at first solve with t >= 0.019 (last RK45 stage of first step).
+    // Print global norms of b and u at every RK45 stage of first step.
+    // All ranks participate in VecNorm (collective). Max 10 dumps.
     {
-        static bool norm_printed = false;
+        static int norm_count = 0;
         auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
-        if (!norm_printed && env != nullptr && std::string(env) == "1" && time >= 0.019) {
-            norm_printed = true;
+        if (norm_count < 10 && env != nullptr && std::string(env) == "1" && time > 0.0) {
+            norm_count++;
             int rank;
             MPI_Comm_rank(comm(), &rank);
             if (rank == 0) {
-                std::cout << "[NORM] Dump at time = " << std::setprecision(17) << time << "\n";
+                std::cout << "[NORM] Stage " << norm_count
+                          << " at time = " << std::setprecision(17) << time << "\n";
             }
 
             auto print_vec_norm = [&](const char *label, Vec v) {
