@@ -24,16 +24,18 @@ CONFIG=bp5_normal_diag.toml
 module load gcc/9.1.0
 module load impi/19.0.9
 
-# Rebuild from latest source
+# Source already checked out on login node.
+# Build must be done BEFORE submitting (cmake needs newer gcc).
+# On login node:
+#   module load gcc/13.2.0   # or whatever was used to build originally
+#   cd ${BUILD_DIR} && cmake --build . -j8
+#
+# This sbatch assumes the binary is already rebuilt.
 cd ${ROOT}/tandem
-git fetch myfork
-git checkout feature/tip-diagnostic
-git pull myfork feature/tip-diagnostic
 echo "Git commit: $(git rev-parse HEAD)"
 echo "Git branch: $(git rev-parse --abbrev-ref HEAD)"
 
-cd ${BUILD_DIR}
-make -j8 || { echo "BUILD FAILED"; exit 1; }
+[ -x "$TANDEM" ] || { echo "ERROR: $TANDEM not found. Rebuild first."; exit 1; }
 
 export OMP_NUM_THREADS=1
 export TANDEM_FIRST_STEP_DUMP=1
