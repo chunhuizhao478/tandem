@@ -76,7 +76,7 @@ void SeasQDOperator::solve(double time, BlockView const& state_view) {
     {
         static bool norm_printed = false;
         auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
-        if (!norm_printed && env != nullptr && std::string(env) == "1" && time >= 0.009) {
+        if (!norm_printed && env != nullptr && std::string(env) == "1" && time >= 0.019) {
             norm_printed = true;
             int rank;
             MPI_Comm_rank(comm(), &rank);

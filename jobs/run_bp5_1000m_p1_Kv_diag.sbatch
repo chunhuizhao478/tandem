@@ -61,7 +61,8 @@ ibrun "$TANDEM" "$CONFIG" --petsc \
       -options_file ${OPTIONS}/lu_mumps.cfg \
       -options_file ${OPTIONS}/rk45.cfg \
       -ts_monitor \
-      -ts_max_steps 10
+      -ts_max_steps 10 \
+      -ts_init_dt 0.02
 
 echo "First-step dump files:"
 ls -lh "${RUN_DIR}"/first_step_*.csv 2>/dev/null || echo "  (none found)"
