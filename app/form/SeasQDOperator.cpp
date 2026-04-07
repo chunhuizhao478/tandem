@@ -46,6 +46,37 @@ void SeasQDOperator::rhs(double time, BlockVector const& state, BlockVector& res
     update_traction(make_state_view(state));
 
     friction_->rhs(time, traction_, state, result);
+
+    // Per-stage coupling loop norms
+    {
+        static int stage_count = 0;
+        auto const* env = std::getenv("TANDEM_FIRST_STEP_DUMP");
+        if (stage_count < 10 && env != nullptr && std::string(env) == "1" && time > 0.0) {
+            stage_count++;
+            int rank;
+            MPI_Comm_rank(comm(), &rank);
+
+            // Traction norms (owned DOFs)
+            PetscReal trac_n1, trac_ninf;
+            VecNorm(traction_.vec(), NORM_1, &trac_n1);
+            VecNorm(traction_.vec(), NORM_INFINITY, &trac_ninf);
+
+            // Result norms (contains V and dpsi/dt)
+            PetscReal res_n1, res_ninf;
+            VecNorm(result.vec(), NORM_1, &res_n1);
+            VecNorm(result.vec(), NORM_INFINITY, &res_ninf);
+
+            if (rank == 0) {
+                std::cout << std::setprecision(15);
+                std::cout << "[COUPLING] Stage " << stage_count
+                          << " t=" << time << "\n";
+                std::cout << "[COUPLING] ||traction||_1   = " << trac_n1 << "\n";
+                std::cout << "[COUPLING] ||traction||_inf = " << trac_ninf << "\n";
+                std::cout << "[COUPLING] ||result||_1   = " << res_n1 << "\n";
+                std::cout << "[COUPLING] ||result||_inf = " << res_ninf << "\n";
+            }
+        }
+    }
 }
 
 void SeasQDOperator::update_internal_state(double time, BlockVector const& state,
